@@ -1,0 +1,16 @@
+services:
+  label-studio:
+    build:
+      context: ./Labelstudio
+      dockerfile: Dockerfile
+    image: label-studio:local
+    container_name: label-studio
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Labelstudio/data:/label-studio/data
+      - ./Upload:/label-studio/data/uploads
+    environment:
+      LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED: "true"
+      LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT: /label-studio/data
+    restart: unless-stopped
