@@ -9,7 +9,17 @@ services:
       - "8080:8080"
     volumes:
       - ./Labelstudio/data:/label-studio/data
-      - ./Upload:/label-studio/data/uploads
+      # Create Upload as the host user before startup; do not let Docker
+      # automatically create a root-owned directory.
+      - type: bind
+        source: ./Upload
+        target: /label-studio/data/Upload
+        bind:
+          create_host_path: false
+      - ./Labelstudio/third-party/mask_cleanup:/label-studio/label_studio/mask_cleanup:ro
+      - ./Labelstudio/third-party/gaussian_mask:/label-studio/label_studio/gaussian_mask:ro
+      - ./Labelstudio/overrides/358.js:/label-studio/web/dist/apps/labelstudio/358.js:ro
+      - ./Labelstudio/overrides/runtime.js:/label-studio/web/dist/apps/labelstudio/runtime.js:ro
     environment:
       LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED: "true"
       LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT: /label-studio/data

@@ -1,3 +1,11 @@
 Upload/*
 Labelstudio/data/export/*
 Labelstudio/data/media/*
+*.sqlite3
+Labelstudio/data/label_studio.sqlite3
+Labelstudio/overrides
+__pseudo_labeller
+Labelstudio/third-party
+Labelstudio/data/.env
+*.sqlite3-shm
+*.sqlite3-wal

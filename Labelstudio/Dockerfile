@@ -1,4 +1,9 @@
-FROM heartexlabs/label-studio:latest
+FROM heartexlabs/label-studio:1.23.1
+
+COPY third-party/mask_cleanup /label-studio/label_studio/mask_cleanup
+COPY third-party/gaussian_mask /label-studio/label_studio/gaussian_mask
+RUN python /label-studio/label_studio/mask_cleanup/install.py
+RUN python /label-studio/label_studio/mask_cleanup/patch_editor.py /label-studio/web/dist/apps/labelstudio/358.js
 
 # Keep project data in the mounted data directory and allow importing files
 # placed there when local file serving is enabled.
