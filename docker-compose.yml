@@ -16,11 +16,25 @@ services:
         target: /label-studio/data/Upload
         bind:
           create_host_path: false
+      - ./Labelstudio/draft_preview:/label-studio/label_studio/draft_preview:ro
       - ./Labelstudio/third-party/mask_cleanup:/label-studio/label_studio/mask_cleanup:ro
       - ./Labelstudio/third-party/gaussian_mask:/label-studio/label_studio/gaussian_mask:ro
+      - ./Labelstudio/third-party/u_net_labeller:/label-studio/label_studio/u_net_labeller:ro
       - ./Labelstudio/overrides/358.js:/label-studio/web/dist/apps/labelstudio/358.js:ro
       - ./Labelstudio/overrides/runtime.js:/label-studio/web/dist/apps/labelstudio/runtime.js:ro
     environment:
+      PYTHONPATH: /label-studio:/label-studio/label_studio
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
+      UNET_DEVICE: "cuda:0"
+      UNET_BATCH_SIZE: "16"
+      LABEL_STUDIO_BASE_DATA_DIR: /label-studio/data
       LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED: "true"
       LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT: /label-studio/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
     restart: unless-stopped
