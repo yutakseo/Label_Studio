@@ -1,27 +1,27 @@
 services:
   label-studio:
     build:
-      context: ./Labelstudio
+      context: ./label_studio
       dockerfile: Dockerfile
     image: label-studio:local
     container_name: label-studio
     ports:
       - "8080:8080"
     volumes:
-      - ./Labelstudio/data:/label-studio/data
-      # Create Upload as the host user before startup; do not let Docker
+      - ./label_studio/data:/label-studio/data
+      # Create files as the host user before startup; do not let Docker
       # automatically create a root-owned directory.
       - type: bind
-        source: ./Upload
-        target: /label-studio/data/Upload
+        source: ./files
+        target: /label-studio/data/files
         bind:
           create_host_path: false
-      - ./Labelstudio/draft_preview:/label-studio/label_studio/draft_preview:ro
-      - ./Labelstudio/third-party/mask_cleanup:/label-studio/label_studio/mask_cleanup:ro
-      - ./Labelstudio/third-party/gaussian_mask:/label-studio/label_studio/gaussian_mask:ro
-      - ./Labelstudio/third-party/u_net_labeller:/label-studio/label_studio/u_net_labeller:ro
-      - ./Labelstudio/overrides/358.js:/label-studio/web/dist/apps/labelstudio/358.js:ro
-      - ./Labelstudio/overrides/runtime.js:/label-studio/web/dist/apps/labelstudio/runtime.js:ro
+      - ./label_studio/draft_preview:/label-studio/label_studio/draft_preview:ro
+      - ./label_studio/third-party/mask_cleanup:/label-studio/label_studio/mask_cleanup:ro
+      - ./label_studio/third-party/gaussian_mask:/label-studio/label_studio/gaussian_mask:ro
+      - ./label_studio/third-party/u_net_labeller:/label-studio/label_studio/u_net_labeller:ro
+      - ./label_studio/overrides/358.js:/label-studio/web/dist/apps/labelstudio/358.js:ro
+      - ./label_studio/overrides/runtime.js:/label-studio/web/dist/apps/labelstudio/runtime.js:ro
     environment:
       PYTHONPATH: /label-studio:/label-studio/label_studio
       NVIDIA_DRIVER_CAPABILITIES: "compute,utility"

@@ -1,3 +1,25 @@
+## 이 저장소의 실행 구조
+
+공식 저장소의 `label_studio` 이름과 공식 로컬 저장소 예제의 `files` 이름을 사용합니다. 이 저장소는 Docker 확장 구성으로, 공식 소스 트리 전체를 복제한 구조는 아닙니다.
+
+```text
+label_studio/       Dockerfile, 확장 코드, 서버 데이터
+  data/            DB, 업로드 파일, 내보내기 결과
+files/             로컬 저장소로 연결하는 원본 데이터셋
+  <dataset>/       images/, masks/, tasks.json, label_config.xml
+docker-compose.yml
+```
+
+`docker compose up -d --build`로 실행합니다. `label_studio/data`는 `/label-studio/data`, `files`는 `/label-studio/data/files`에 마운트합니다. `LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=/label-studio/data`이므로 이미지 URL은 `/data/local-files/?d=files/<dataset>/images/...` 형식입니다.
+
+프로젝트의 Local Files 소스 저장소 경로는 `/label-studio/data/files/<dataset>`, JSON 파일 필터는 `.*\.json$`, `use_blob_urls`는 `false`로 설정합니다. 같은 데이터를 UI Import와 저장소 Sync로 중복 가져오지 마세요. 등록 후 데이터셋 폴더명을 변경할 때는 태스크 URL, 저장소 경로 및 동기화 기록도 함께 이전해야 합니다.
+
+`label_config.xml`은 프로젝트의 Labeling Interface에 직접 적용하는 설정 원본입니다. 웹 UI에서 Import한 파일은 Label Studio가 별도로 `label_studio/data/media/upload/` 아래에 관리합니다. DB와 데이터셋은 별도로 백업하세요.
+
+공식 참고: [저장소 소스 코드](https://github.com/HumanSignal/label-studio), [Docker와 로컬 저장소](https://labelstud.io/guide/start.html#Run-Label-Studio-on-Docker-and-use-Local-Storage).
+
+---
+
 <img src="https://user-images.githubusercontent.com/12534576/192582340-4c9e4401-1fe6-4dbb-95bb-fdbba5493f61.png"/>
 
 ![GitHub](https://img.shields.io/github/license/heartexlabs/label-studio?logo=heartex) ![label-studio:build](https://github.com/HumanSignal/label-studio/workflows/label-studio:build/badge.svg) ![GitHub release](https://img.shields.io/github/v/release/heartexlabs/label-studio?include_prereleases)
