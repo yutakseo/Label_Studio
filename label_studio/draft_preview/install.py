@@ -4,3 +4,7 @@ line = 'MIDDLEWARE.append("draft_preview.middleware.DraftPreviewMiddleware")'
 source = settings.read_text()
 if line not in source:
     settings.write_text(source + '\n# Autosaved draft previews\n' + line + '\n')
+
+# Apply before exports are serialized, including snapshot format conversions.
+from export_filter import patch
+patch(settings.parents[2] / 'data_export/serializers.py')

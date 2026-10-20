@@ -89,3 +89,120 @@
     } catch(error) { if (current===generation)status.textContent=error.message; }
   };
 })();
+
+/* Saved annotation attribution, including imported masks without an author. */
+(() => {
+  function person(value, users) {
+    if (value == null) return null;
+    const user = typeof value === 'object' ? value : users.get(Number(value));
+    if (!user) return `사용자 #${value}`;
+    return user.username || [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email || `사용자 #${user.id}`;
+  }
+  function attribution(annotation, users) {
+    const author = person(annotation.completed_by, users);
+    const editor = person(annotation.updated_by, users);
+    const parts = [`작성자: ${author || '미지정 (가져온 라벨)'}`];
+    if (editor) parts.push(`마지막 저장: ${editor}`);
+    if (annotation.updated_at) parts.push(new Date(annotation.updated_at).toLocaleString('ko-KR'));
+    return parts.join(' · ');
+  }
+  function tabIdentity(annotation, model, currentUser, drafts, users) {
+    const ownerId = annotation.completed_by?.id ?? annotation.completed_by;
+    const currentId = currentUser?.id ?? currentUser;
+    const own = ownerId != null && currentId != null && String(ownerId) === String(currentId);
+    const changed = model?.isDrawing || (model?.history?.hasChanges && model.history.undoIdx > 0);
+    if (model?.selected && own && changed && currentUser) {
+      return {name: person(currentUser.id ?? currentUser, users), role: 'editing', label: '작업 중'};
+    }
+    const draft = drafts.find(d => String(d.annotation) === String(annotation.id)
+      && JSON.stringify(d.result) !== JSON.stringify(annotation.result));
+    if (model?.selected && own && draft) {
+      const owner = typeof draft.user === 'object' || /^\d+$/.test(String(draft.user))
+        ? person(draft.user, users) : person([...users.values()].find(u => u.email === draft.user || u.username === draft.user), users) || String(draft.user);
+      return {name: owner, role: 'draft', label: '미제출 초안'};
+    }
+    const author = person(annotation.completed_by, users);
+    return {name: author || '가져온 라벨', role: author ? 'author' : 'imported', label: own ? '' : '읽기 전용'};
+  }
+  if (typeof module !== 'undefined') Object.assign(module.exports, {person, attribution, tabIdentity});
+  if (typeof document === 'undefined') return;
+  let users = new Map(), usersLoaded = false, annotations = [], drafts = [], taskId = null;
+  let refreshAt = 0, pending = false, generation = 0, submitting = false;
+  const api = async url => {
+    const response = await fetch(url, {credentials: 'same-origin'});
+    if (!response.ok) throw new Error(`작업자 정보 불러오기 실패 (${response.status})`);
+    return response.json();
+  };
+  function syncTabs() {
+    const byId = new Map(annotations.map(a => [String(a.id), a]));
+    for (const tab of document.querySelectorAll('[data-annotation-id]')) {
+      const annotation = byId.get(tab.getAttribute('data-annotation-id'));
+      const name = tab.querySelector('.lsf-annotation-button__name');
+      if (!annotation || !name) continue;
+      const store = window.Htx;
+      const model = store?.annotationStore?.annotations?.find(a => String(a.pk) === String(annotation.id));
+      const identity = tabIdentity(annotation, model, store?.user, drafts, users);
+      if (name.textContent !== identity.name) name.textContent = identity.name;
+      name.title = identity.label ? `${identity.name} · ${identity.label}` : attribution(annotation, users);
+      name.dataset.attributionRole = identity.role;
+      const info = tab.querySelector('.lsf-annotation-button__info');
+      let badge = tab.querySelector('[data-working-user-label]');
+      if (identity.label && info) {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.dataset.workingUserLabel = '';
+          info.append(badge);
+        }
+        badge.textContent = ` · ${identity.label}`;
+      } else badge?.remove();
+      tab.querySelector('[data-last-editor-label]')?.remove();
+    }
+  }
+  async function refresh(id) {
+    if (pending) return;
+    pending = true;
+    const current = generation;
+    refreshAt = Date.now() + 15000;
+    try {
+      const [task, people] = await Promise.all([
+        api(`/api/tasks/${id}/`),
+        usersLoaded ? Promise.resolve(null) : api('/api/users/'),
+      ]);
+      if (current !== generation) return;
+      if (people) {
+        users = new Map((Array.isArray(people) ? people : people.results || []).map(u => [u.id, u]));
+        usersLoaded = true;
+      }
+      annotations = task.annotations || [];
+      drafts = task.drafts || [];
+      syncTabs();
+    } catch {
+      // Retry metadata on the next refresh without adding a layout element.
+    } finally {
+      pending = false;
+    }
+  }
+  function update() {
+    const store = window.Htx, selection = store?.annotationStore?.selected;
+    const id = new URL(location.href).searchParams.get('task');
+    const image = selection?.names && [...selection.names.values()].find(n => n.type === 'image' && n.containerRef);
+    if (!/^\d+$/.test(id || '') || !image?.containerRef?.isConnected) {
+      if (taskId !== null) { taskId = null; generation++; }
+      return;
+    }
+    syncTabs();
+    const changedTask = id !== taskId;
+    if (changedTask) {
+      taskId = id;
+      generation++;
+      annotations = [];
+      drafts = [];
+      refreshAt = 0;
+    }
+    const saved = submitting && !store.isSubmitting;
+    submitting = !!store.isSubmitting;
+    if (!document.hidden && (saved || Date.now() >= refreshAt)) refresh(id);
+  }
+  setInterval(update, 1000);
+  update();
+})();

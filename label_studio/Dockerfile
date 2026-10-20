@@ -21,8 +21,26 @@ RUN python /label-studio/label_studio/mask_cleanup/install.py
 RUN python /label-studio/label_studio/mask_cleanup/patch_editor.py /label-studio/web/dist/apps/labelstudio/358.js
 COPY patches/brush_coordinates.py /label-studio/patches/brush_coordinates.py
 RUN python /label-studio/patches/brush_coordinates.py /label-studio/web/dist/apps/labelstudio/358.js
+COPY patches/brush_size.py /label-studio/patches/brush_size.py
+RUN python /label-studio/patches/brush_size.py /label-studio/web/dist/apps/labelstudio/358.js
+COPY patches/brush_grid.py patches/brush_grid.js /label-studio/patches/
+RUN python /label-studio/patches/brush_grid.py /label-studio/web/dist/apps/labelstudio/358.js
+COPY patches/pen_input.py patches/pen_input.js /label-studio/patches/
+RUN python /label-studio/patches/pen_input.py /label-studio/web/dist/apps/labelstudio/358.js
+COPY patches/annotation_author.py /label-studio/patches/annotation_author.py
+RUN python /label-studio/patches/annotation_author.py /label-studio/web/dist/apps/labelstudio/358.js
+COPY patches/user_tabs.py patches/user_tabs.js /label-studio/patches/
+RUN python /label-studio/patches/user_tabs.py /label-studio/web/dist/apps/labelstudio/358.js
+COPY patches/annotated_by.py /label-studio/patches/annotated_by.py
+RUN python /label-studio/patches/annotated_by.py /label-studio/label_studio/data_manager/managers.py
+COPY patches/annotation_ownership.py /label-studio/patches/annotation_ownership.py
+RUN python /label-studio/patches/annotation_ownership.py /label-studio/label_studio/tasks/api.py
+COPY patches/tree_export_compat.py /label-studio/patches/tree_export_compat.py
+RUN python /label-studio/patches/tree_export_compat.py /label-studio/label_studio/mask_cleanup/tree_export
 COPY draft_preview /label-studio/label_studio/draft_preview
 RUN python /label-studio/label_studio/draft_preview/install.py
+COPY patches/user_isolation.py /label-studio/patches/user_isolation.py
+RUN python /label-studio/patches/user_isolation.py /label-studio/label_studio
 
 # Keep project data in the mounted data directory and allow importing files
 # placed there when local file serving is enabled.

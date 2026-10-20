@@ -10,6 +10,16 @@ files/             로컬 저장소로 연결하는 원본 데이터셋
 docker-compose.yml
 ```
 
+브러쉬와 지우개 크기는 최소 크기는 0.2픽셀이고, 그 위로는 0.5픽셀 단위로 최대 30픽셀까지 조절할 수 있습니다. 슬라이더, 크기 조절 단축키, 마우스 휠에 동일하게 적용됩니다. 브러쉬와 지우개는 이미지 좌표계의 0.1픽셀 사각형 격자에 맞춰 사각형 도장을 이어서 칠합니다. 그리는 중, 다시 표시할 때, 내보낼 때 동일한 방식으로 처리합니다. 내보내는 래스터 마스크의 해상도는 원본 이미지와 같습니다.
+
+와콤 등 태블릿 펜의 Pointer 입력을 이미지 편집기의 마우스 그리기 처리로 연결합니다. 펜을 누른 상태의 이동과 떼기, 입력 취소 및 창 포커스 해제를 처리합니다.
+
+상단 라벨 탭에는 저장된 작성자를 표시하고, 선택한 라벨을 편집 중이면 현재 계정과 `작업 중`, 변경된 자동 저장 초안이면 초안 계정과 `미제출 초안`을 표시합니다. 편집하지 않은 가져온 라벨에는 현재 계정 이름을 붙이지 않습니다. 작성자가 없는 가져온 마스크는 `작성자 미지정`으로 표시하며, 마지막 저장자를 원 작성자로 바꾸지는 않습니다.
+
+작업 목록의 `Annotated by` 열과 작업자 필터는 기록된 작성자만 사용합니다. 가져오기나 마지막 저장자 정보로 작성자를 추정하지 않습니다. 작성자가 없는 라벨은 라벨 결과를 변경해 저장한 사용자에게 귀속되며, 결과가 같은 저장이나 메타데이터 변경만으로는 작성자를 지정하지 않습니다.
+
+`mask_original`은 원본 비교용 탭입니다. 일반 export 직렬화에서 해당 prediction을 제외하며, 저장된 작업 라벨은 유지합니다. 기존에 생성한 export 파일은 새로 생성해야 이 규칙이 적용됩니다.
+
 `docker compose up -d --build`로 실행합니다. `label_studio/data`는 `/label-studio/data`, `files`는 `/label-studio/data/files`에 마운트합니다. `LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=/label-studio/data`이므로 이미지 URL은 `/data/local-files/?d=files/<dataset>/images/...` 형식입니다.
 
 프로젝트의 Local Files 소스 저장소 경로는 `/label-studio/data/files/<dataset>`, JSON 파일 필터는 `.*\.json$`, `use_blob_urls`는 `false`로 설정합니다. 같은 데이터를 UI Import와 저장소 Sync로 중복 가져오지 마세요. 등록 후 데이터셋 폴더명을 변경할 때는 태스크 URL, 저장소 경로 및 동기화 기록도 함께 이전해야 합니다.
@@ -279,3 +289,7 @@ Include a citation for Label Studio in the **References** section of your articl
 This software is licensed under the [Apache 2.0 LICENSE](/LICENSE) © [Heartex](https://www.heartex.com/). 2020-2025
 
 <img src="https://user-images.githubusercontent.com/12534576/192582529-cf628f58-abc5-479b-a0d4-8a3542a4b35e.png" title="Hey everyone!" width="180" />
+
+사용자별 마스크 저장을 분리합니다. 다른 사용자의 라벨을 수정하면 본인 소유의 사본으로 저장하며 원본은 유지합니다. 초안은 본인만 수정·삭제할 수 있고, 라벨 저장 시 다른 사용자의 초안을 삭제하지 않습니다. 변경·삭제 전 라벨과 초안은 `label_studio/data/mask-revisions/`에 별도 이력으로 보관합니다.
+
+탭 생성과 선택은 Label Studio 기본 `+` 버튼과 탭 메뉴를 사용합니다. 다른 사용자의 원본 탭은 읽기 전용으로 표시합니다.

@@ -5,6 +5,8 @@ from django.http import HttpResponse
 class DraftPreviewMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
+        from .user_isolation import install_revision_history
+        install_revision_history()
 
     def __call__(self, request):
         if request.path == '/draft-preview.js':

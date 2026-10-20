@@ -1,0 +1,14 @@
+const assert = require('node:assert/strict');
+require('./user_tabs.js');
+const {tabIdentity} = require('../draft_preview/panel.js');
+const users = new Map([[1, {id:1,username:'yutakseo'}], [2,{id:2,username:'duduk7668'}]]);
+const store={store:{user:{id:1}}};
+assert.equal(__labelStudioCanEditAnnotation(store,{user:{id:1}}),true);
+assert.equal(__labelStudioCanEditAnnotation(store,{user:{id:2}}),false);
+assert.equal(__labelStudioCanEditAnnotation(store,{user:null}),false);
+const foreign=tabIdentity({id:524,completed_by:2},{selected:true,isDrawing:true},{id:1},[],users);
+assert.equal(foreign.name,'duduk7668');assert.equal(foreign.label,'읽기 전용');
+const editing=tabIdentity({id:538,completed_by:1},{selected:true,isDrawing:true},{id:1},[],users);
+assert.equal(editing.name,'yutakseo');assert.equal(editing.label,'작업 중');
+assert.equal(typeof globalThis.__labelStudioOwnTab,'undefined');
+console.log('PASS: per-user editing, original author labels, no automatic tab creation');
