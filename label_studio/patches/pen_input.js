@@ -80,14 +80,23 @@ globalThis.__labelStudioPenInput = function(editor) {
       event.stopImmediatePropagation();
     }
   }
+  function contextmenu(event) {
+    if (container.contains(event.target) &&
+        (active || Date.now() < suppressUntil || event.pointerType === 'pen')) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }
   const blur = () => finish();
   for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel']) window.addEventListener(type, pointer, options);
   for (const type of ['mousedown', 'mousemove', 'mouseup', 'click']) window.addEventListener(type, mouse, options);
+  window.addEventListener('contextmenu', contextmenu, options);
   window.addEventListener('blur', blur);
   return () => {
     finish();
     for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel']) window.removeEventListener(type, pointer, options);
     for (const type of ['mousedown', 'mousemove', 'mouseup', 'click']) window.removeEventListener(type, mouse, options);
+    window.removeEventListener('contextmenu', contextmenu, options);
     window.removeEventListener('blur', blur);
   };
 };

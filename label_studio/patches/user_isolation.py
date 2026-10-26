@@ -12,6 +12,10 @@ def replace_once(source, old, new):
 
 
 def patch_api(source):
+    source = source.replace('serializer.save(completed_by=self.request.user)',
+                            'serializer.save(completed_by=self.request.user, updated_by=self.request.user)')
+    source = source.replace('        return queryset.filter(task_id=task_id, user=self.request.user)',
+        '        from draft_preview.user_isolation import latest_user_drafts\n        return latest_user_drafts(queryset.filter(task_id=task_id), self.request.user)')
     source = replace_once(source,
         '    def update(self, request, *args, **kwargs):\n        # save user history with annotator_id, time & annotation result',
         '''    def update(self, request, *args, **kwargs):
@@ -28,7 +32,7 @@ def patch_api(source):
         annotation.delete()''')
     source = replace_once(source,
         '            serializer.save()\n\n    def perform_destroy(self, annotation):',
-        '            serializer.save(completed_by=self.request.user)\n\n    def perform_destroy(self, annotation):')
+        '            serializer.save(completed_by=self.request.user, updated_by=self.request.user)\n\n    def perform_destroy(self, annotation):')
     source = replace_once(source,
         "        serializer.save(task_id=self.kwargs['pk'], annotation_id=annotation_id, user=self.request.user)",
         """        from draft_preview.user_isolation import draft_annotation
@@ -36,7 +40,7 @@ def patch_api(source):
         serializer.save(task_id=task_id, annotation_id=annotation_id, user=user)""")
     source = replace_once(source,
         '        return queryset.filter(task_id=task_id)',
-        '        return queryset.filter(task_id=task_id, user=self.request.user)')
+        '        from draft_preview.user_isolation import latest_user_drafts\n        return latest_user_drafts(queryset.filter(task_id=task_id), self.request.user)')
     source = replace_once(source,
         "        if 'completed_by' not in ser.validated_data:\n            extra_args['completed_by'] = self.request.user",
         "        extra_args['completed_by'] = self.request.user")
@@ -47,6 +51,12 @@ def patch_api(source):
         return super().get_queryset().filter(user=self.request.user)
 
 ''')
+    source = replace_once(source,
+        '        annotation = ser.save(**extra_args)',
+        '        from draft_preview.user_isolation import save_user_annotation\n        annotation = save_user_annotation(self, ser, extra_args)')
+    source = replace_once(source,
+        '        return queryset.filter(task_id=task_id, user=self.request.user)',
+        '        from draft_preview.user_isolation import latest_user_drafts\n        return latest_user_drafts(queryset.filter(task_id=task_id), self.request.user)')
     return source
 
 

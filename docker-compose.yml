@@ -20,6 +20,7 @@ services:
       - ./label_studio/third-party/mask_cleanup:/label-studio/label_studio/mask_cleanup:ro
       - ./label_studio/third-party/gaussian_mask:/label-studio/label_studio/gaussian_mask:ro
       - ./label_studio/third-party/u_net_labeller:/label-studio/label_studio/u_net_labeller:ro
+      - ./label_studio/third-party/reference_segmenter:/label-studio/label_studio/reference_segmenter:ro
       - ./label_studio/overrides/358.js:/label-studio/web/dist/apps/labelstudio/358.js:ro
       - ./label_studio/overrides/runtime.js:/label-studio/web/dist/apps/labelstudio/runtime.js:ro
     environment:

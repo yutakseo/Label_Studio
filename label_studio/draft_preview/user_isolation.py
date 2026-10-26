@@ -21,10 +21,7 @@ def isolate_update(view, request, args, kwargs, update):
             # Validate before making a copy; a bad request must not create a label.
             serializer = view.get_serializer(original, data=request.data, partial=request.method == 'PATCH')
             serializer.is_valid(raise_exception=True)
-            own = Annotation.objects.filter(
-                task_id=original.task_id, completed_by=request.user,
-                parent_annotation=original,
-            ).order_by('pk').first()
+            own = regular_annotations(original.task, request.user).order_by('pk').first()
             if own is None:
                 own = Annotation.objects.create(
                     task=original.task, project=original.project,
@@ -48,11 +45,16 @@ def draft_annotation(task_id, annotation_id, user):
     from tasks.models import Annotation
 
     if annotation_id is None:
-        return None
+        from tasks.models import Task
+        own=regular_annotations(Task.objects.get(pk=task_id),user).order_by('pk').first()
+        return own.pk if own is not None else None
     annotation = Annotation.objects.get(pk=annotation_id, task_id=task_id)
     # Keep drafts detached from a foreign label so saving that label cannot
     # delete someone else's unsent work. The result itself still stays intact.
-    return annotation.pk if annotation.completed_by_id == user.pk else None
+    if annotation.completed_by_id == user.pk:
+        return annotation.pk
+    own=regular_annotations(annotation.task,user).order_by('pk').first()
+    return own.pk if own is not None else None
 
 
 def archive_revision(sender, instance, **kwargs):
@@ -80,3 +82,35 @@ def install_revision_history():
         for signal in (pre_save, pre_delete):
             signal.connect(archive_revision, sender=model, weak=False,
                            dispatch_uid=f'mask_revision_{model.__name__}_{id(signal)}')
+
+
+def regular_annotations(task, user):
+    """Named MERGE outputs remain separate from the annotator's working tab."""
+    from tasks.models import Annotation
+    named = list((task.meta or {}).get('mask_merge_annotations', {}))
+    return Annotation.objects.filter(task=task, completed_by=user, was_cancelled=False).exclude(pk__in=named)
+
+
+def save_user_annotation(view, serializer, extra_args):
+    from tasks.models import Task
+    extra_args = {**extra_args, 'updated_by': view.request.user}
+    if getattr(view, 'keep_separate_annotation', False):
+        return serializer.save(**extra_args)
+    with transaction.atomic():
+        task = Task.objects.select_for_update().get(pk=extra_args['task_id'])
+        own = regular_annotations(task, view.request.user).order_by('pk').first()
+        if own is not None:
+            serializer.instance = own
+        return serializer.save(**extra_args)
+
+
+def latest_user_drafts(queryset, user):
+    """Retain draft revisions on disk/DB while exposing one current draft per tab."""
+    from django.db.models import OuterRef, Subquery
+    from tasks.models import AnnotationDraft
+    newest = AnnotationDraft.objects.filter(task_id=OuterRef('task_id'), user=user,
+        annotation_id=OuterRef('annotation_id')).order_by('-updated_at', '-pk').values('pk')[:1]
+    detached = AnnotationDraft.objects.filter(task_id=OuterRef('task_id'), user=user,
+        annotation_id__isnull=True).order_by('-updated_at', '-pk').values('pk')[:1]
+    from django.db.models import Q
+    return queryset.filter(user=user).filter(Q(pk=Subquery(newest)) | Q(annotation_id__isnull=True, pk=Subquery(detached)))

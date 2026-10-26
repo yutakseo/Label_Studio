@@ -15,6 +15,6 @@ class DraftPreviewMiddleware:
         if (request.path.startswith('/projects/') and response.status_code == 200
                 and 'text/html' in response.get('Content-Type', '')
                 and not response.streaming and not response.get('Content-Encoding')):
-            response.content = response.content.replace(b'</body>', b'<script src="/draft-preview.js?v=2" defer></script></body>')
+            response.content = response.content.replace(b'</body>', b'<script src="/draft-preview.js?v=4" defer></script><script src="/mask-merge/panel.js?v=3" defer></script></body>')
             response['Content-Length'] = str(len(response.content))
         return response

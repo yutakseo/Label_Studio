@@ -19,6 +19,11 @@ RUN pip install --no-cache-dir torch==2.7.1 --index-url https://download.pytorch
 RUN python /label-studio/label_studio/u_net_labeller/install.py
 RUN python /label-studio/label_studio/mask_cleanup/install.py
 RUN python /label-studio/label_studio/mask_cleanup/patch_editor.py /label-studio/web/dist/apps/labelstudio/358.js
+COPY patches/mask_merge_tool.py patches/mask_merge_tool.js /label-studio/patches/
+RUN python /label-studio/patches/mask_merge_tool.py /label-studio/web/dist/apps/labelstudio/358.js
+COPY third-party/reference_segmenter /label-studio/label_studio/reference_segmenter
+RUN python /label-studio/label_studio/reference_segmenter/patch_editor.py /label-studio/web/dist/apps/labelstudio/358.js
+RUN python /label-studio/label_studio/reference_segmenter/install.py
 COPY patches/brush_coordinates.py /label-studio/patches/brush_coordinates.py
 RUN python /label-studio/patches/brush_coordinates.py /label-studio/web/dist/apps/labelstudio/358.js
 COPY patches/brush_size.py /label-studio/patches/brush_size.py

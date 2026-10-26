@@ -1,0 +1,21 @@
+const assert = require('node:assert/strict');
+const {hasMask, sourceTitle} = require('./merge_panel.js');
+const target = {from_name:'brush', to_name:'image', label:'Exposure'};
+const source = {id:12, kind:'annotation', completed_by:null,
+  result:[{type:'brushlabels', ...target, value:{format:'rle', brushlabels:['Exposure']}}]};
+assert.equal(hasMask(source, target), true);
+assert.equal(hasMask(source, {...target, label:'Other'}), false);
+assert.equal(hasMask(source, {...target, to_name:'other'}), false);
+assert.equal(hasMask({result:[]}, target), false);
+assert.equal(sourceTitle(source), '가져온 라벨 · 라벨 #12');
+assert.equal(sourceTitle({...source, kind:'prediction', model_version:'U-Net'}), 'U-Net · #12');
+assert.equal(sourceTitle({...source, completed_by:{id:3, username:'작업자'}}), '작업자 · 라벨 #12');
+assert.equal(sourceTitle({...source, merge_name:'MERGE'}), 'MERGE · 라벨 #12');
+const {tabIdentity} = require('./panel.js');
+const users = new Map([[3, {id:3, username:'작업자'}]]);
+const merged = {id:12, completed_by:3, merge_name:'MERGE'};
+assert.equal(tabIdentity(merged, {}, {id:3}, [], users).name, 'MERGE');
+assert.equal(tabIdentity(merged, {selected:true, isDrawing:true}, {id:3}, [], users).name, 'MERGE');
+assert.equal(tabIdentity(merged, {}, {id:4}, [], users).name, 'MERGE');
+assert.equal(tabIdentity({...merged, merge_name:undefined}, {}, {id:3}, [], users).name, '작업자');
+console.log('Merge source selection and attribution tests passed.');

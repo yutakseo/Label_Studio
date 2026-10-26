@@ -107,22 +107,23 @@
     return parts.join(' · ');
   }
   function tabIdentity(annotation, model, currentUser, drafts, users) {
+    const mergeName = annotation.merge_name === 'MERGE' ? 'MERGE' : null;
     const ownerId = annotation.completed_by?.id ?? annotation.completed_by;
     const currentId = currentUser?.id ?? currentUser;
     const own = ownerId != null && currentId != null && String(ownerId) === String(currentId);
     const changed = model?.isDrawing || (model?.history?.hasChanges && model.history.undoIdx > 0);
     if (model?.selected && own && changed && currentUser) {
-      return {name: person(currentUser.id ?? currentUser, users), role: 'editing', label: '작업 중'};
+      return {name: mergeName || person(currentUser.id ?? currentUser, users), role: 'editing', label: '작업 중'};
     }
     const draft = drafts.find(d => String(d.annotation) === String(annotation.id)
       && JSON.stringify(d.result) !== JSON.stringify(annotation.result));
     if (model?.selected && own && draft) {
       const owner = typeof draft.user === 'object' || /^\d+$/.test(String(draft.user))
         ? person(draft.user, users) : person([...users.values()].find(u => u.email === draft.user || u.username === draft.user), users) || String(draft.user);
-      return {name: owner, role: 'draft', label: '미제출 초안'};
+      return {name: mergeName || owner, role: 'draft', label: '미제출 초안'};
     }
     const author = person(annotation.completed_by, users);
-    return {name: author || '가져온 라벨', role: author ? 'author' : 'imported', label: own ? '' : '읽기 전용'};
+    return {name: mergeName || author || '가져온 라벨', role: mergeName ? 'merge' : author ? 'author' : 'imported', label: own ? '' : '원본 보존'};
   }
   if (typeof module !== 'undefined') Object.assign(module.exports, {person, attribution, tabIdentity});
   if (typeof document === 'undefined') return;
@@ -141,6 +142,9 @@
       if (!annotation || !name) continue;
       const store = window.Htx;
       const model = store?.annotationStore?.annotations?.find(a => String(a.pk) === String(annotation.id));
+      if (annotation.updated_at && model?.setModifiedDate && model.modifiedDate !== annotation.updated_at) {
+        model.setModifiedDate(annotation.updated_at);
+      }
       const identity = tabIdentity(annotation, model, store?.user, drafts, users);
       if (name.textContent !== identity.name) name.textContent = identity.name;
       name.title = identity.label ? `${identity.name} · ${identity.label}` : attribution(annotation, users);
@@ -173,7 +177,9 @@
         users = new Map((Array.isArray(people) ? people : people.results || []).map(u => [u.id, u]));
         usersLoaded = true;
       }
-      annotations = task.annotations || [];
+      annotations = (task.annotations || []).map(a => ({...a,
+        merge_name:task.meta?.mask_merge_annotations?.[a.id]?.name}));
+      globalThis.__labelStudioMergeTabIds = new Set(annotations.filter(a=>a.merge_name === 'MERGE').map(a=>String(a.id)));
       drafts = task.drafts || [];
       syncTabs();
     } catch {
@@ -203,6 +209,9 @@
     submitting = !!store.isSubmitting;
     if (!document.hidden && (saved || Date.now() >= refreshAt)) refresh(id);
   }
+  document.addEventListener('label-studio:annotation-saved', () => {
+    refreshAt = 0;
+  });
   setInterval(update, 1000);
   update();
 })();
