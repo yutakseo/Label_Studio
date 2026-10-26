@@ -52,14 +52,25 @@ globalThis.__labelStudioForkOnUpdate = function(app) {
 };
 // Match ZIP export selection using saved timestamps, never draft autosave times.
 globalThis.__labelStudioLatestSavedTab = function(store, records) {
-  const candidates = records.filter(record => record.id != null && !record.was_cancelled)
+  const candidates = records.filter(record => (record.id ?? record.pk) != null && !record.was_cancelled)
     .map(record => ({record, time: Date.parse(record.updated_at || record.created_at || '') || 0}))
-    .sort((a,b) => b.time-a.time || Number(b.record.id)-Number(a.record.id));
+    .sort((a,b) => b.time-a.time || Number(b.record.id ?? b.record.pk)-Number(a.record.id ?? a.record.pk));
   for (const {record} of candidates) {
-    const tab = store.annotations.find(tab => String(tab.pk) === String(record.id));
+    const tab = store.annotations.find(tab => String(tab.pk) === String(record.id ?? record.pk));
     if (tab) return tab;
   }
   return undefined;
+};
+globalThis.__labelStudioLatestTaskTab = async function(store, task) {
+  let records = task.annotations || [];
+  // Data Manager sends stubs without updated_at; use the same saved data as export.
+  if (records.some(record => !record.updated_at)) {
+    try {
+      const response = await fetch(`/api/tasks/${task.id}/`, {credentials:'same-origin', cache:'no-store'});
+      if (response.ok) records = (await response.json()).annotations || [];
+    } catch (error) { console.error('Could not load latest saved annotation', error); }
+  }
+  return globalThis.__labelStudioLatestSavedTab(store, records);
 };
 globalThis.__labelStudioSortTabs = function(tabs) {
   const timestamp = tab => {

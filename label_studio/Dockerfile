@@ -34,6 +34,8 @@ COPY patches/pen_input.py patches/pen_input.js /label-studio/patches/
 RUN python /label-studio/patches/pen_input.py /label-studio/web/dist/apps/labelstudio/358.js
 COPY patches/annotation_author.py /label-studio/patches/annotation_author.py
 RUN python /label-studio/patches/annotation_author.py /label-studio/web/dist/apps/labelstudio/358.js
+COPY patches/latest_selection.py /label-studio/patches/latest_selection.py
+RUN python /label-studio/patches/latest_selection.py /label-studio/web/dist/apps/labelstudio/167.js
 COPY patches/user_tabs.py patches/user_tabs.js /label-studio/patches/
 RUN python /label-studio/patches/user_tabs.py /label-studio/web/dist/apps/labelstudio/358.js
 COPY patches/annotated_by.py /label-studio/patches/annotated_by.py
