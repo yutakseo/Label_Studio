@@ -1,0 +1,13 @@
+__data/
+*.png
+*.zip
+*.txt
+*.log
+*.csv
+.DS_Store
+*.pyc
+
+# Document the generated data layout without tracking datasets.
+!__data/
+__data/*
+!__data/README.md

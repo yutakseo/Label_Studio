@@ -1,303 +1,91 @@
-## 이 저장소의 실행 구조
+# Label Studio · 이미지 마스크 라벨링 작업 환경
 
-이미지 도구 모음의 **참고 마스크 학습**은 64×64 패치에서 그린 마스크를 누적 학습하고 전체 이미지를 예측합니다. 예측 후 패치를 다시 선택해 수정하고 재학습할 수 있습니다. 결과는 `Reference Segmenter` 예측 탭에 저장합니다. 사용법과 모델 범위는 [확장 문서](label_studio/third-party/reference_segmenter/README.md)를 참고하세요.
+이 저장소는 **Label Studio 1.23.1**을 기반으로 시편 이미지의 브러시 마스크 작성·보정·학습·내보내기를 지원하는 Docker 확장 프로젝트입니다. 공식 Label Studio 소스 전체가 아니라, 설치 이미지에 적용하는 Python/JavaScript 확장과 패치, 데이터 전처리 도구를 관리합니다.
 
-이미지 라벨링 도구 모음의 `마스크 합치기`(겹친 사각형 아이콘)에서 가져온 라벨, U-Net 예측, 저장된 사용자 라벨 중 2개 이상을 선택할 수 있습니다. 대상 이미지·라벨의 칠해진 영역을 합집합으로 합쳐 미리보기한 뒤 `새 라벨로 저장`하면 `MERGE`라는 새 라벨 탭이 생성됩니다. 저장 소유자는 합치기를 실행한 사용자로 유지합니다. 원본 탭은 유지하며, 여러 영역은 하나의 편집 가능한 브러시 영역으로 합칩니다. 편집 중인 내용은 먼저 저장하세요. 미제출 초안과 회전된 마스크는 지원하지 않습니다.
-
-공식 저장소의 `label_studio` 이름과 공식 로컬 저장소 예제의 `files` 이름을 사용합니다. 이 저장소는 Docker 확장 구성으로, 공식 소스 트리 전체를 복제한 구조는 아닙니다.
+## 폴더 구조
 
 ```text
-label_studio/       Dockerfile, 확장 코드, 서버 데이터
-  data/            DB, 업로드 파일, 내보내기 결과
-files/             로컬 저장소로 연결하는 원본 데이터셋
-  <dataset>/       images/, masks/, tasks.json, label_config.xml
-docker-compose.yml
+Label_Studio/
+├── docker-compose.yml             # 서버, GPU, 데이터·코드·번들 마운트
+├── label_studio/
+│   ├── Dockerfile                 # Debian/Python 3.12 + LS 1.23.1 + CUDA PyTorch
+│   ├── draft_preview/             # 작성자·초안·사용자별 저장, 마스크 합치기
+│   ├── patches/                   # 공식 서버 및 편집기 번들 패치
+│   ├── overrides/                 # 실제 서비스에 마운트하는 프런트엔드 번들
+│   ├── third-party/
+│   │   ├── mask_cleanup/          # 밝기 후처리·매직 브러시
+│   │   │   └── tree_export/       # 원본 폴더 구조를 유지하는 ZIP
+│   │   ├── gaussian_mask/         # 가우시안 차이 기반 마스크
+│   │   │   └── pseudo_core/       # 오프라인 알고리즘 사본
+│   │   ├── u_net_labeller/        # 256×256 패치 U-Net 추론
+│   │   ├── reference_segmenter/   # 클래스별 64×64 참고 패치 학습
+│   │   └── dark_line/             # 현재 비어 있는 이전 경로
+│   └── data/                      # SQLite, 업로드, 이력, 학습 모델
+├── files/                         # Local Files 데이터셋: images/masks/tasks/config
+├── __pseudo_labeller/
+│   ├── 00_extract/                # 노출 조건별 mono 원본 추출
+│   ├── 01_crop/                   # 시편 ROI 추출·경계 평가
+│   ├── 02_pseudo_labeller/        # Gaussian pseudo 마스크·YOLO polygon
+│   ├── 03_yolo_formatting/        # Roboflow용 YOLO ZIP
+│   └── __data/                    # 전처리 단계별 데이터
+├── scripts/                       # P3 데이터 검증·태스크 생성·비교 탭 등록
+├── outputs/                       # 업무 산출물
+└── docs/                          # 전체 사용법·운영·코드 탐색 안내
 ```
 
-브러쉬와 지우개 크기는 최소 크기는 0.2픽셀이고, 그 위로는 0.5픽셀 단위로 최대 30픽셀까지 조절할 수 있습니다. 슬라이더, 크기 조절 단축키, 마우스 휠에 동일하게 적용됩니다. 브러쉬와 지우개는 이미지 좌표계의 0.1픽셀 사각형 격자에 맞춰 사각형 도장을 이어서 칠합니다. 그리는 중, 다시 표시할 때, 내보낼 때 동일한 방식으로 처리합니다. 내보내는 래스터 마스크의 해상도는 원본 이미지와 같습니다.
+하위 폴더의 README와 CODE_MAP에는 파일 역할, 주요 함수, 입력·출력, 적용 및 검증 방법을 정리했습니다. 데이터의 시편·촬영 조건별 반복 디렉터리는 상위 데이터 문서에서 설명합니다.
 
-와콤 등 태블릿 펜의 Pointer 입력을 이미지 편집기의 마우스 그리기 처리로 연결합니다. 펜을 누른 상태의 이동과 떼기, 입력 취소 및 창 포커스 해제를 처리합니다.
+## 주요 기능
 
-상단 라벨 탭에는 저장된 작성자를 표시하고, 선택한 라벨을 편집 중이면 현재 계정과 `작업 중`, 변경된 자동 저장 초안이면 초안 계정과 `미제출 초안`을 표시합니다. 편집하지 않은 가져온 라벨에는 현재 계정 이름을 붙이지 않습니다. 작성자가 없는 가져온 마스크는 `작성자 미지정`으로 표시하며, 마지막 저장자를 원 작성자로 바꾸지는 않습니다.
+| 기능 | 동작 | 상세 문서 |
+| --- | --- | --- |
+| 정밀 수동 편집 | 브러시·지우개 0.2~30px, 0.1px 이미지 좌표 격자, 사각 도장, 펜 입력 | [패치](label_studio/patches/README.md) |
+| 매직 브러시 | 클릭한 밝기와 연결된 영역을 지우거나 선택 마스크에 추가 | [밝기 도구](label_studio/third-party/mask_cleanup/README.md) |
+| 가우시안 마스킹 | 원본−블러 차이와 Otsu로 마스크 생성, 전체/박스 범위 적용 | [Gaussian](label_studio/third-party/gaussian_mask/README.md) |
+| U-Net pseudo 라벨링 | 256px 패치를 중첩 추론하고 원본 해상도로 합성 | [U-Net](label_studio/third-party/u_net_labeller/README.md) |
+| 참고 마스크 학습 | 클래스별 64px 수정 패치를 공유 모델에 누적 학습 | [Reference Segmenter](label_studio/third-party/reference_segmenter/README.md) |
+| 마스크 합치기 | 여러 저장 탭을 라벨별로 합쳐 별도 MERGE 탭 생성 | [합치기·저장](label_studio/draft_preview/README.md) |
+| 사용자별 저장 | 다른 작성자의 라벨 보존, 본인 작업 탭·초안 분리, 변경 전 이력 보관 | [사용자 격리](label_studio/draft_preview/README.md) |
+| 폴더 구조 유지 Export | 최신 저장 라벨로 PNG 마스크와 원본 이미지 ZIP 생성 | [트리 Export](label_studio/third-party/mask_cleanup/tree_export/README.md) |
+| 오프라인 데이터 준비 | 원본 추출 → ROI → pseudo 마스크 → LS/YOLO 변환 | [전처리](__pseudo_labeller/README.md) |
 
-작업 목록의 `Annotated by` 열과 작업자 필터는 기록된 작성자만 사용합니다. 가져오기나 마지막 저장자 정보로 작성자를 추정하지 않습니다. 작성자가 없는 라벨은 라벨 결과를 변경해 저장한 사용자에게 귀속되며, 결과가 같은 저장이나 메타데이터 변경만으로는 작성자를 지정하지 않습니다.
+## 빠른 시작
 
-Update/Submit으로 저장한 라벨 탭과 툴팁은 생성 시각이 아닌 서버의 마지막 수정 시각(`updated_at`)을 표시합니다. 저장 직후 작성자 정보와 수정 시간을 다시 조회합니다. 폴더 구조 ZIP 내보내기는 작성자와 관계없이 취소되지 않은 저장 라벨 중 수정 시각이 가장 최근인 마스크를 선택하며, manifest와 `_annotations` JSON에 수정 시각을 기록합니다. 이미지를 열 때도 같은 기준으로 최신 저장 라벨을 기본 선택합니다. 미제출 초안의 자동 저장 시각은 기본 탭 선택에 사용하지 않습니다. 기존 export 파일은 자동 변경되지 않으므로 저장 후 새로 다운로드하세요.
-
-`mask_original`은 원본 비교용 탭입니다. 일반 export 직렬화에서 해당 prediction을 제외하며, 저장된 작업 라벨은 유지합니다. 기존에 생성한 export 파일은 새로 생성해야 이 규칙이 적용됩니다.
-
-`docker compose up -d --build`로 실행합니다. `label_studio/data`는 `/label-studio/data`, `files`는 `/label-studio/data/files`에 마운트합니다. `LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=/label-studio/data`이므로 이미지 URL은 `/data/local-files/?d=files/<dataset>/images/...` 형식입니다.
-
-프로젝트의 Local Files 소스 저장소 경로는 `/label-studio/data/files/<dataset>`, JSON 파일 필터는 `.*\.json$`, `use_blob_urls`는 `false`로 설정합니다. 같은 데이터를 UI Import와 저장소 Sync로 중복 가져오지 마세요. 등록 후 데이터셋 폴더명을 변경할 때는 태스크 URL, 저장소 경로 및 동기화 기록도 함께 이전해야 합니다.
-
-`label_config.xml`은 프로젝트의 Labeling Interface에 직접 적용하는 설정 원본입니다. 웹 UI에서 Import한 파일은 Label Studio가 별도로 `label_studio/data/media/upload/` 아래에 관리합니다. DB와 데이터셋은 별도로 백업하세요.
-
-공식 참고: [저장소 소스 코드](https://github.com/HumanSignal/label-studio), [Docker와 로컬 저장소](https://labelstud.io/guide/start.html#Run-Label-Studio-on-Docker-and-use-Local-Storage).
-
----
-
-<img src="https://user-images.githubusercontent.com/12534576/192582340-4c9e4401-1fe6-4dbb-95bb-fdbba5493f61.png"/>
-
-![GitHub](https://img.shields.io/github/license/heartexlabs/label-studio?logo=heartex) ![label-studio:build](https://github.com/HumanSignal/label-studio/workflows/label-studio:build/badge.svg) ![GitHub release](https://img.shields.io/github/v/release/heartexlabs/label-studio?include_prereleases)
-
-[Website](https://labelstud.io/) • [Docs](https://labelstud.io/guide/) • [Join Slack Community <img src="https://app.heartex.ai/docs/images/slack-mini.png" width="18px"/>](https://slack.labelstud.io/?source=github-1)
-
-
-## What is Label Studio?
-
-<!-- <a href="https://labelstud.io/blog/release-130.html"><img src="https://github.com/HumanSignal/label-studio/raw/master/docs/themes/htx/source/images/release-130/LS-Hits-v1.3.png" align="right" /></a> -->
-
-Label Studio is an open source data labeling tool. It lets you label data types like audio, text, images, videos, and time series with a simple and straightforward UI and export to various model formats. It can be used to prepare raw data or improve existing training data to get more accurate ML models.
-
-- [Try out Label Studio](#try-out-label-studio)
-- [What you get from Label Studio](#what-you-get-from-label-studio)
-- [Included templates for labeling data in Label Studio](#included-templates-for-labeling-data-in-label-studio)
-- [Set up machine learning models with Label Studio](#set-up-machine-learning-models-with-Label-Studio)
-- [Integrate Label Studio with your existing tools](#integrate-label-studio-with-your-existing-tools)
-
-![Gif of Label Studio annotating different types of data](/images/annotation_examples.gif)
-
-Have a custom dataset? You can customize Label Studio to fit your needs. Read an [introductory blog post](https://towardsdatascience.com/introducing-label-studio-a-swiss-army-knife-of-data-labeling-140c1be92881) to learn more. 
-
-## Try out Label Studio
-
-Install Label Studio locally or deploy it in a cloud instance. [Or sign up for a free trial of our Starter Cloud edition!](https://humansignal.com/platform/starter-cloud/) You can learn more about what each edition offers [here](https://labelstud.io/guide/label_studio_compare). 
-
-- [Install locally with Docker](#install-locally-with-docker)
-- [Run with Docker Compose (Label Studio + Nginx + PostgreSQL)](#run-with-docker-compose)
-- [Install locally with pip](#install-locally-with-pip)
-- [Install locally with poetry](#install-locally-with-poetry)
-- [Install locally with Anaconda](#install-locally-with-anaconda)
-- [Install for local development](#install-for-local-development)
-- [Deploy in a cloud instance](#deploy-in-a-cloud-instance)
-
-### Install locally with Docker
-Official Label Studio docker image is [here](https://hub.docker.com/r/heartexlabs/label-studio) and it can be downloaded with `docker pull`. 
-Run Label Studio in a Docker container and access it at `http://localhost:8080`.
-
+Docker Engine, Compose 플러그인과 NVIDIA Container Toolkit이 구성된 GPU 호스트를 기준으로 합니다. 현재 Compose는 GPU 0을 요청하며 서버 추론 장치를 `cuda:0`으로 지정합니다. CPU 전용 호스트에서는 GPU 예약을 제거하고 `UNET_DEVICE=cpu`로 변경해야 합니다.
 
 ```bash
-docker pull heartexlabs/label-studio:latest
-docker run -it -p 8080:8080 -v $(pwd)/mydata:/label-studio/data heartexlabs/label-studio:latest
-```
-You can find all the generated assets, including SQLite3 database storage `label_studio.sqlite3` and uploaded files, in the `./mydata` directory.
-
-#### Override default Docker install
-You can override the default launch command by appending the new arguments:
-```bash
-docker run -it -p 8080:8080 -v $(pwd)/mydata:/label-studio/data heartexlabs/label-studio:latest label-studio --log-level DEBUG
+# 저장소 루트에서 실행. bind mount 원본 폴더를 먼저 생성합니다.
+mkdir -p files label_studio/data
+docker compose up -d --build label-studio
+docker compose ps
+docker compose logs --tail=100 label-studio
 ```
 
-#### Build a local image with Docker
-If you want to build a local image, run:
-```bash
-docker build -t heartexlabs/label-studio:latest .
-```
+`http://localhost:8080`에 접속해 계정을 만들고 프로젝트를 생성합니다. 초기 비밀번호를 코드에 지정하지 않습니다. 기존 데이터 볼륨을 사용하면 기존 계정·프로젝트를 유지합니다. Compose의 `overrides/*.js` 원본 파일이 있어야 합니다. 다른 환경에 Git으로 복제한 경우 [설치·마운트 안내](label_studio/README.md)를 먼저 확인하세요.
 
-### Run with Docker Compose
-Docker Compose script provides production-ready stack consisting of the following components:
+프로젝트 Labeling Interface에 데이터셋의 `label_config.xml`을 붙여 넣고 `tasks.json` 또는 분할된 `imports/tasks_*.json`을 가져옵니다. 동일 데이터는 UI Import와 Local Files Sync 중 한 방식으로 등록합니다. [데이터 연결](files/README.md)에 URL·저장소 설정 예시가 있습니다.
 
-- Label Studio
-- [Nginx](https://www.nginx.com/) - proxy web server used to load various static data, including uploaded audio, images, etc.
-- [PostgreSQL](https://www.postgresql.org/) - production-ready database that replaces less performant SQLite3.
+## 작업 순서
 
-To start using the app from `http://localhost` run this command:
-```bash
-docker-compose up
-```
+1. 태스크를 열고 저장 라벨 또는 모델 예측을 확인합니다.
+2. 브러시·지우개·매직 브러시·가우시안 도구로 마스크를 보정합니다.
+3. **Update/Submit**으로 저장합니다. 자동 저장 초안은 최종 저장 라벨과 다릅니다.
+4. 필요하면 U-Net 예측이나 참고 패치 학습으로 후보를 만들고 수동 검수합니다.
+5. 여러 클래스의 결과는 **마스크 합치기 → 모든 라벨 유지**로 묶어 MERGE 탭에 저장합니다.
+6. **Export → 폴더 구조 유지**에서 내보낼 라벨을 선택해 ZIP을 다운로드합니다. PNG는 선택한 라벨의 이진 마스크이고, 전체 결과는 `_annotations` JSON에 보존됩니다.
 
-### Run with Docker Compose + MinIO
-You can also run it with an additional MinIO server for local S3 storage. This is particularly useful when you want to 
-test the behavior with S3 storage on your local system. To start Label Studio in this way, you need to run the following command:
-````bash
-# Add sudo on Linux if you are not a member of the docker group
-docker compose -f docker-compose.yml -f docker-compose.minio.yml up -d
-````
-If you do not have a static IP address, you must create an entry in your hosts file so that both Label Studio and your 
-browser can access the MinIO server. For more detailed instructions, please refer to [our guide on storing data](docs/source/guide/storedata.md).
+## 개발 및 운영 문서
 
+- [사용자 작업 안내](docs/USER_GUIDE.md): 저장·예측·합치기·Export 동작과 제약
+- [운영 안내](docs/OPERATIONS.md): 재시작/재빌드/번들 패치, 백업, 오류 해결, 검증
+- [구조와 데이터 흐름](docs/ARCHITECTURE.md): URL 연결, 코드 주입, 저장 경계
+- [폴더 탐색 결과](docs/DIRECTORY_INVENTORY.md): 재귀 탐색 범위, 코드/데이터 현황, 접근 제한
+- [문서 목차](docs/README.md): 하위 모듈 전체 문서
 
-### Install locally with pip
+Python 확장을 수정하면 **서버 재시작**, 패널 JS를 수정하면 **브라우저 새로고침**, 편집기 도구를 수정하면 **마운트된 번들 패치**, Dockerfile·설치 스크립트·의존성을 수정하면 **재빌드**가 필요합니다. 화면만 갱신하면 서버가 이전 API 계약을 유지할 수 있습니다.
 
-```bash
-# Requires Python >=3.10
-pip install label-studio
+## 데이터 보관과 버전 관리
 
-# Start the server at http://localhost:8080
-label-studio
-```
+`label_studio/data/`와 `files/`는 별도로 백업합니다. DB만으로 원본 이미지·학습 패치·체크포인트를 복원할 수 없습니다. `.env`, SQLite, 원본 이미지, 모델 가중치, 생성 ZIP 등은 Git 관리 대상에서 제외합니다. 이 저장소의 일부 확장 코드와 번들도 기존 `.gitignore`에 의해 제외되어 있으므로 다른 호스트로 이전할 때 필요한 파일을 함께 전달해야 합니다.
 
-### Install locally with poetry
-
-```bash
-### install poetry
-pip install poetry
-
-### set poetry environment
-poetry new my-label-studio
-cd my-label-studio
-poetry add label-studio
-
-### activate poetry environment
-poetry shell
-
-### Start the server at http://localhost:8080
-label-studio
-```
-
-### Install locally with Anaconda
-
-```bash
-conda create --name label-studio
-conda activate label-studio
-conda install psycopg2
-pip install label-studio
-```
-
-### Install for local development
-
-You can run the latest Label Studio version locally without installing the package from pypi. 
-
-```bash
-# Install all package dependencies
-pip install poetry
-poetry install
-# Run database migrations
-python label_studio/manage.py migrate
-python label_studio/manage.py collectstatic
-# Start the server in development mode at http://localhost:8080
-python label_studio/manage.py runserver
-```
-
-### Deploy in a cloud instance
-
-You can deploy Label Studio with one click in Heroku, Microsoft Azure, or Google Cloud Platform: 
-
-<a href="https://www.heroku.com/deploy?template=https://github.com/HumanSignal/label-studio/tree/heroku-persistent-pg"><img src="https://www.herokucdn.com/deploy/button.svg" alt="Deploy" height="30px"></a>
-[<img src="https://aka.ms/deploytoazurebutton" height="30px">](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fhumansignal%2Flabel-studio%2Fdevelop%2Fazuredeploy.json)
-[<img src="https://deploy.cloud.run/button.svg" height="30px">](https://deploy.cloud.run)
-
-
-#### Apply frontend changes
-
-For information about updating the frontend, see [label-studio/web/README.md](https://github.com/HumanSignal/label-studio/blob/develop/web/README.md#installation-instructions).
-
-
-#### Install dependencies on Windows 
-To run Label Studio on Windows, download and install the following wheel packages from [Gohlke builds](https://www.lfd.uci.edu/~gohlke/pythonlibs) to ensure you're using the correct version of Python:
-- [lxml](https://www.lfd.uci.edu/~gohlke/pythonlibs/#lxml)
-
-```bash
-# Upgrade pip 
-pip install -U pip
-
-# If you're running Win64 with Python 3.8, install the packages downloaded from Gohlke:
-pip install lxml‑4.5.0‑cp38‑cp38‑win_amd64.whl
-
-# Install label studio
-pip install label-studio
-```
-
-### Run test suite
-To add the tests' dependencies to your local install:
-
-```bash
-poetry install --with test
-```
-
-Alternatively, it is possible to run the unit tests from a Docker container in which the test dependencies are installed:
-
-
-```bash
-make build-testing-image
-make docker-testing-shell
-```
-
-In either case, to run the unit tests:
-
-```bash
-cd label_studio
-
-# sqlite3
-DJANGO_DB=sqlite DJANGO_SETTINGS_MODULE=core.settings.label_studio pytest -vv
-
-# postgres (assumes default postgres user,db,pass. Will not work in Docker
-# testing container without additional configuration)
-DJANGO_DB=default DJANGO_SETTINGS_MODULE=core.settings.label_studio pytest -vv
-```
- 
-## What you get from Label Studio
-
-https://github.com/user-attachments/assets/525ad5ff-6904-4398-b507-7e8954268d69
-
-- **Multi-user labeling** sign up and login, when you create an annotation it's tied to your account.
-- **Multiple projects** to work on all your datasets in one instance.
-- **Streamlined design** helps you focus on your task, not how to use the software.
-- **Configurable label formats** let you customize the visual interface to meet your specific labeling needs.
-- **Support for multiple data types** including images, audio, text, HTML, time-series, and video. 
-- **Import from files or from cloud storage** in Amazon AWS S3, Google Cloud Storage, or JSON, CSV, TSV, RAR, and ZIP archives. 
-- **Integration with machine learning models** so that you can visualize and compare predictions from different models and perform pre-labeling.
-- **Embed it in your data pipeline** REST API makes it easy to make it a part of your pipeline
-
-## Included templates for labeling data in Label Studio 
-
-Label Studio includes a variety of templates to help you label your data, or you can create your own using specifically designed configuration language. The most common templates and use cases for labeling include the following cases:
-
-<img src="/images/template-types.png" />
-
-## Set up machine learning models with Label Studio
-
-Connect your favorite machine learning model using the Label Studio Machine Learning SDK. Follow these steps:
-
-1. Start your own machine learning backend server. See [more detailed instructions](https://github.com/HumanSignal/label-studio-ml-backend).
-2. Connect Label Studio to the server on the model page found in project settings.
-
-This lets you:
-
-- **Pre-label** your data using model predictions. 
-- Do **online learning** and retrain your model while new annotations are being created. 
-- Do **active learning** by labeling only the most complex examples in your data.
-
-## Integrate Label Studio with your existing tools
-
-You can use Label Studio as an independent part of your machine learning workflow or integrate the frontend or backend into your existing tools.  
-
-## Ecosystem
-
-| Project | Description |
-|-|-|
-| label-studio | Server, distributed as a pip package |
-| [Frontend library](web/libs/editor/) | The Label Studio frontend library. This uses React to build the UI and mobx-state-tree for state management. |  
-| [Data Manager library](web/libs/datamanager/) | A library for the Data Manager, our data exploration tool. | 
-| [label-studio-converter](https://github.com/HumanSignal/label-studio-sdk/tree/master/src/label_studio_sdk/converter) | Encode labels in the format of your favorite machine learning library |
-| [label-studio-transformers](https://github.com/HumanSignal/label-studio-transformers) | Transformers library connected and configured for use with Label Studio |
-
-## Citation
-
-Include a citation for Label Studio in the **References** section of your articles:
-
-```tex
-@misc{Label Studio,
-  title={{Label Studio}: Data labeling software},
-  url={https://github.com/HumanSignal/label-studio},
-  note={Open source software available from https://github.com/HumanSignal/label-studio},
-  author={
-    Maxim Tkachenko and
-    Mikhail Malyuk and
-    Andrey Holmanyuk and
-    Nikolai Liubimov},
-  year={2020-2025},
-}
-```
-
-## License
-
-This software is licensed under the [Apache 2.0 LICENSE](/LICENSE) © [Heartex](https://www.heartex.com/). 2020-2025
-
-<img src="https://user-images.githubusercontent.com/12534576/192582529-cf628f58-abc5-479b-a0d4-8a3542a4b35e.png" title="Hey everyone!" width="180" />
-
-사용자별 마스크 저장을 분리합니다. 다른 사용자의 라벨을 수정하면 본인 소유의 사본으로 저장하며 원본은 유지합니다. 초안은 본인만 수정·삭제할 수 있고, 라벨 저장 시 다른 사용자의 초안을 삭제하지 않습니다. 변경·삭제 전 라벨과 초안은 `label_studio/data/mask-revisions/`에 별도 이력으로 보관합니다.
-
-다른 사용자의 탭에서 그리는 변경은 본인의 자동 저장 초안으로 보관합니다. Update를 누르면 편집한 마스크를 본인 이름의 새 탭으로 저장하고 다른 사용자의 원본 탭은 그대로 보존합니다. 본인 탭에서 Update하면 같은 탭을 갱신합니다. 저장한 탭은 다른 사용자도 볼 수 있으며, 같은 방식으로 각자 별도 마스크를 저장할 수 있습니다. 기본 `+` 버튼과 탭 메뉴도 그대로 사용할 수 있습니다.
-
-라벨 탭은 마지막 수정 시각의 오름차순으로 표시하므로 가장 최근에 수정한 탭이 오른쪽에 위치합니다. 저장 후에도 순서를 갱신하고 현재 선택한 탭을 유지합니다.
+상위 제품은 HumanSignal의 Label Studio이며, 이 문서는 현재 로컬 구성과 소스에 기반합니다. 공식 소스의 Poetry·Makefile·Nginx/PostgreSQL 설치 예시는 이 저장소에 해당 파일이 없어 포함하지 않았습니다.

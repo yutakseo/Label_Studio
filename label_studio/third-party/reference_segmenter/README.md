@@ -21,7 +21,7 @@ ROI 이동만으로는 학습 데이터에 저장되지 않습니다. 빨간 마
 
 미리보기와 저장은 선택한 클래스에만 적용됩니다. 예측은 `Reference Segmenter · <클래스> · <식별자>` 탭에 저장하며, 다른 클래스의 탭은 유지합니다. 기존 공통 탭이 해당 클래스만 포함하면 최초 저장 시 같은 ID로 이전합니다. 여러 클래스가 섞인 기존 탭은 보존합니다. 모델 키는 변경하지 않아 기존 Exposure 모델과 샘플을 그대로 사용합니다.
 
-클래스별 모델은 독립 이진 분할 모델입니다. 클래스 간 겹침을 자동으로 해소하지 않습니다. 기존의 마스크 합치기는 같은 클래스끼리만 사용합니다. 각 클래스의 예측 탭을 선택해 검수합니다.
+클래스별 모델은 독립 이진 분할 모델입니다. 클래스 간 겹침을 자동으로 해소하지 않습니다. **마스크 합치기 → 모든 라벨 유지**에서 서로 다른 클래스의 예측 탭을 한 MERGE 어노테이션으로 묶을 수 있습니다. 같은 라벨은 합집합으로 합치고 다른 라벨 및 겹친 픽셀은 각각 유지합니다. 각 클래스의 예측 탭도 원본으로 보존합니다.
 
 ## 학습과 추론
 
@@ -81,3 +81,21 @@ docker exec label-studio python -m unittest reference_segmenter.test_neural refe
 ## 배포
 
 Dockerfile·Compose는 `reference_segmenter`를 사용합니다. `docker compose up -d --build label-studio`로 배포합니다. 호스트 번들을 마운트하는 경우 `python label_studio/third-party/reference_segmenter/patch_editor.py label_studio/overrides/358.js`를 실행합니다. 내부 DarkLine 식별자는 기존 번들 호환용입니다. 규칙 기반/Gaussian 코드는 회귀 검증용이고 패널 학습·예측에는 사용하지 않습니다.
+
+## 코드 구성
+
+| 모듈 | 책임 |
+| --- | --- |
+| `targets.py` | 프로젝트 BrushLabels target 검증, 안정된 클래스 hash·prediction 버전 |
+| `views.py` | 패치 수집·학습·미리보기·클래스별 예측 저장·중복 탭 정리 |
+| `storage.py` | 프로젝트 공유 디렉터리와 기존 개인 모델 채택 |
+| `neural.py` | NPZ 패치 보관, 패치 전용 학습, Hann 중첩 추론 |
+| `model.py` | 64×64 입력/출력 계약의 ReferenceUNet |
+| `panel.js`, `patch_editor.js` | 클래스 선택·추가, ROI 편집·학습·저장, 툴바 연결 |
+| `retrain.py`, `validate.py` | 패치만으로 재학습, 체크포인트 검증 |
+| `processing.py`, `learning.py`, `bootstrap.py` | 과거 규칙/prototype/전체 이미지 학습 코드, 현재 패널 학습과 구분 |
+| `install.py`, `middleware.py`, `urls.py` | 패널과 API 설치 |
+
+[CODE_MAP](CODE_MAP.md)에 함수·테스트 목록이 있습니다. 예측 저장은 `/reference-segmenter/predictions/save`로 들어가고, `(from_name, to_name, label)`을 프로젝트 설정과 대조합니다. 학습 키와 예측 버전이 같은 target을 기준으로 만들어져 클래스별 결과가 분리됩니다.
+
+기존 재학습 명령의 프로젝트 ID·hash는 해당 환경 예시입니다. 다른 프로젝트에서는 패널/메타데이터로 실제 체크포인트를 확인하고 경로를 치환하세요. `retrain`은 활성 가중치를 교체하므로 사전 백업과 별도 검증이 필요합니다. 문서 갱신을 위해 이 명령을 실행하지 않습니다.
