@@ -4,6 +4,8 @@ const target = {from_name:'brush', to_name:'image', label:'Exposure'};
 const source = {id:12, kind:'annotation', completed_by:null,
   result:[{type:'brushlabels', ...target, value:{format:'rle', brushlabels:['Exposure']}}]};
 assert.equal(hasMask(source, target), true);
+assert.equal(hasMask(source, {...target, label:null}), true);
+assert.equal(hasMask({result:[]}, {...target, label:null}), false);
 assert.equal(hasMask(source, {...target, label:'Other'}), false);
 assert.equal(hasMask(source, {...target, to_name:'other'}), false);
 assert.equal(hasMask({result:[]}, target), false);

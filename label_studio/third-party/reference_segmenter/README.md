@@ -9,9 +9,19 @@
 3. 왼쪽 원본에서 64×64 ROI를 고르고 오른쪽 메인에서 마스크를 수정합니다.
 4. **참고 마스크 학습**을 누르면 원본 패치·마스크 쌍을 저장하고, 저장된 수정 패치들만 사용해 U-Net을 20스텝 추가 학습합니다. 같은 사용자·태스크·좌표는 수정본으로 교체합니다. 다른 사용자의 패치는 함께 보존합니다.
 5. **미리보기**로 전체 이미지에 대해 패치별 추론·합성을 수행합니다.
-6. 원하면 **Reference Segmenter 탭 저장·갱신**을 누릅니다. 태스크에 기존 탭이 있으면 같은 ID의 결과를 갱신하고, 없을 때만 생성합니다. 동시 저장은 태스크 잠금으로 직렬화합니다. 기존 중복 탭은 하나로 합칩니다.
+6. 원하면 **Reference Segmenter 탭 저장·갱신**을 누릅니다. 태스크에 같은 클래스의 탭이 있으면 같은 ID의 결과를 갱신하고, 없을 때만 생성합니다. 동시 저장은 태스크 잠금으로 직렬화합니다. 같은 클래스의 중복 탭만 하나로 합칩니다.
 
 ROI 이동만으로는 학습 데이터에 저장되지 않습니다. 빨간 마스크 이외의 픽셀은 배경으로 학습됩니다.
+
+## 결함 클래스별 학습
+
+패널의 **+ 새 라벨 추가… → 새 라벨 → 라벨 추가**에서 원하는 이름을 직접 추가합니다. 프로젝트 라벨 설정 변경 권한이 필요합니다. 클래스는 자동으로 생성되지 않습니다. 등록 후 메인 라벨링 화면을 새로고침하면 새 클래스가 나타납니다.
+
+**학습·추론할 라벨** 또는 클래스별 현황 버튼으로 모델을 전환합니다. 선택한 클래스마다 64×64 수정 패치, 학습 횟수, U-Net 가중치가 분리됩니다. 다른 이미지에서 등록한 같은 클래스의 패치는 그 클래스 모델에 누적됩니다. **이 클래스의 등록 샘플**에서 이미지 ID·좌표·등록 작업자를 확인할 수 있습니다. 다른 결함과 정상 영역은 선택한 이진 모델의 배경으로 표시합니다. 예를 들어 Dryspot을 학습할 때는 Dryspot 부분만 칠하세요. 음성 패치는 아무것도 칠하지 않고 학습할 수 있습니다.
+
+미리보기와 저장은 선택한 클래스에만 적용됩니다. 예측은 `Reference Segmenter · <클래스> · <식별자>` 탭에 저장하며, 다른 클래스의 탭은 유지합니다. 기존 공통 탭이 해당 클래스만 포함하면 최초 저장 시 같은 ID로 이전합니다. 여러 클래스가 섞인 기존 탭은 보존합니다. 모델 키는 변경하지 않아 기존 Exposure 모델과 샘플을 그대로 사용합니다.
+
+클래스별 모델은 독립 이진 분할 모델입니다. 클래스 간 겹침을 자동으로 해소하지 않습니다. 기존의 마스크 합치기는 같은 클래스끼리만 사용합니다. 각 클래스의 예측 탭을 선택해 검수합니다.
 
 ## 학습과 추론
 
@@ -61,6 +71,8 @@ docker exec label-studio python -m reference_segmenter.retrain --checkpoint /lab
 ```sh
 node --check label_studio/third-party/reference_segmenter/panel.js
 node --test label_studio/third-party/reference_segmenter/test_panel.cjs
+# Playwright + Chromium 설치 환경에서 API 쓰기를 가로챈 UI 흐름 검증
+python label_studio/third-party/reference_segmenter/test_multiclass_browser.py
 docker exec label-studio python -m unittest reference_segmenter.test_neural reference_segmenter.test_learning reference_segmenter.test_processing reference_segmenter.test_http
 ```
 

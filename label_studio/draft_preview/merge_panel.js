@@ -2,7 +2,7 @@
   function hasMask(source, target) {
     return (source.result || []).some(r => r.type === 'brushlabels'
       && r.from_name === target.from_name && r.to_name === target.to_name
-      && r.value?.format === 'rle' && r.value?.brushlabels?.includes(target.label));
+      && r.value?.format === 'rle' && (target.label == null ? r.value?.brushlabels?.length > 0 : r.value?.brushlabels?.includes(target.label)));
   }
   function sourceTitle(source) {
     if (source.kind === 'prediction') return `${source.model_version || '예측'} · #${source.id}`;
@@ -33,9 +33,9 @@
     .hint{font-size:12px;opacity:.8;margin:12px 0}.preview{padding:20px;display:flex;flex-direction:column;min-width:0;gap:12px}.stage{position:relative;flex:1;min-height:240px;background:#111;border-radius:6px;overflow:hidden}.stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.placeholder{padding:30px;color:#bbb}.stage.show .placeholder{display:none}.stage:not(.show) img{display:none}
     footer{border-top:1px solid #8885;display:flex;gap:14px;align-items:center;justify-content:space-between}.actions{display:flex;gap:8px;flex-shrink:0}[role=status]{overflow-wrap:anywhere;font-size:13px}[role=status][data-error=true]{color:#ff7373}
     @media(max-width:700px){main{display:block}aside{border-right:0}.stage{height:300px}footer{align-items:stretch;flex-direction:column}.actions{justify-content:flex-end}}
-  </style><div class="layout"><header><h2>마스크 합치기</h2><p>선택한 탭의 칠해진 영역을 모두 합쳐 새 라벨로 저장합니다.</p></header>
+  </style><div class="layout"><header><h2>마스크 합치기</h2><p>선택한 탭의 마스크를 라벨별로 합쳐 새 라벨 탭에 저장합니다.</p></header>
   <main><aside><label class="field" for="merge-target">대상 이미지 · 라벨</label><select id="merge-target"></select><p class="hint">저장된 라벨과 예측 중 2개 이상을 선택하세요. 편집 중인 내용은 먼저 저장한 뒤 이 창을 여세요.</p><div class="sources"></div></aside>
-  <section class="preview"><strong>합친 마스크 미리보기</strong><div class="stage"><p class="placeholder">합칠 마스크를 선택하고 미리보기를 누르세요.</p><img data-original alt="원본 이미지"><img data-mask alt="합친 영역"></div><p data-stats class="hint"></p><p class="hint">선택한 이미지·라벨만 합칩니다. 원본 탭은 유지되고, 결과는 MERGE라는 새 라벨 탭에 저장됩니다.</p></section></main>
+  <section class="preview"><strong>합친 마스크 미리보기</strong><div class="stage"><p class="placeholder">합칠 마스크를 선택하고 미리보기를 누르세요.</p><img data-original alt="원본 이미지"><img data-mask alt="합친 영역"></div><p data-stats class="hint"></p><p class="hint">모든 라벨 유지 시 같은 라벨끼리 합치며, 다른 라벨의 겹친 영역도 각각 유지합니다. 원본 탭은 유지되고, 결과는 MERGE라는 새 라벨 탭에 저장됩니다.</p></section></main>
   <footer><p role="status" aria-live="polite"></p><div class="actions"><button data-close>닫기</button><button data-preview>미리보기</button><button data-save class="primary" disabled>새 라벨로 저장</button></div></footer></div>`;
   document.body.append(dialog);
   const targetSelect = root.querySelector('select'), list = root.querySelector('.sources');
@@ -108,11 +108,12 @@
           if (control.getAttribute('toName') !== image.getAttribute('name')) continue;
           const field = (image.getAttribute('value') || '').match(/^\$(\w+)$/)?.[1];
           if (!field || typeof task.data[field] !== 'string') continue;
+          targets.push({field, from_name:control.getAttribute('name'), to_name:image.getAttribute('name'), label:null});
           for (const label of control.querySelectorAll('Label')) targets.push({field,
             from_name:control.getAttribute('name'), to_name:image.getAttribute('name'), label:label.getAttribute('value')});
         }
       }
-      targetSelect.replaceChildren(...targets.map((t, i) => new Option(`${t.to_name} / ${t.label}`, String(i))));
+      targetSelect.replaceChildren(...targets.map((t, i) => new Option(`${t.to_name} / ${t.label ?? '모든 라벨 유지'}`, String(i))));
       const targetIndex = targets.findIndex(t => t.from_name === context.from_name && t.to_name === context.to_name);
       if (targetIndex >= 0) targetSelect.value = String(targetIndex);
       renderSources();
@@ -141,7 +142,8 @@
       snapshot = chosen.map(s => ({id:s.id, kind:s.kind, result:JSON.stringify(s.result)}));
       processed = merged;
       overlay.src = merged.preview; stage.classList.add('show');
-      stats.textContent = `${merged.stats.sources}개 탭 · ${merged.stats.regions}개 영역 → ${merged.stats.pixels.toLocaleString()}픽셀`;
+      const labels = [...new Set(merged.results.flatMap(r => r.value.brushlabels))];
+      stats.textContent = `${labels.join(', ')} · ${merged.stats.sources}개 탭 · ${merged.stats.regions}개 영역 → ${merged.stats.pixels.toLocaleString()}픽셀`;
       message('합친 영역을 확인한 뒤 새 라벨로 저장하세요.');
     } catch (error) { message(error.message, true); }
     finally { lock(false); }

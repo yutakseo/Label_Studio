@@ -23,6 +23,17 @@ class DarkLineHttpTests(unittest.TestCase):
         r.user=SimpleNamespace(is_authenticated=authenticated);r._dont_enforce_csrf_checks=csrf
         return r
 
+    def test_panel_cache_invalidation(self):
+        from .views import script
+        from .middleware import PanelMiddleware
+        from django.http import HttpResponse
+        response=script(RequestFactory().get('/reference-segmenter/panel.js?v=old'))
+        self.assertIn('no-store',response['Cache-Control'])
+        self.assertIn("+ 새 라벨 추가".encode(),response.content)
+        middleware=PanelMiddleware(lambda request:HttpResponse('<html><body></body></html>'))
+        html=middleware(RequestFactory().get('/projects/16/data'))
+        self.assertRegex(html.content.decode(),r'/reference-segmenter/panel\.js\?v=[0-9a-f]{12}')
+
     def test_preview_and_route(self):
         r=preview(self.request());self.assertEqual(r.status_code,200)
         data=json.loads(r.content);self.assertEqual(data['stats']['components'],1)
@@ -72,7 +83,7 @@ class LearningHttpTests(unittest.TestCase):
             saved = SimpleNamespace(pk=7, updated_at=datetime.now(timezone.utc), result=brush_result(mask, 'brush', 'image', 'Target'))
             annotations.filter.return_value.order_by.return_value = [saved]
             annotations.filter.return_value.first.return_value = saved
-            tasks.return_value.get.return_value = SimpleNamespace(pk=1, project_id=5, annotations=annotations)
+            tasks.return_value.get.return_value = SimpleNamespace(pk=1, project_id=5, annotations=annotations, project=SimpleNamespace(parsed_label_config={'brush':{'type':'BrushLabels','to_name':['image'],'labels':['Target','Dryspot']}}))
             status = json.loads(learn(request('status')).content)
             self.assertEqual(status['round'], 0)
             self.assertEqual(status['sources'][0]['id'], 7)
@@ -121,6 +132,26 @@ class LearningHttpTests(unittest.TestCase):
             other = request('predict', image=upload(rgb)); other.user.pk = 11
             self.assertEqual(learn(other).status_code, 200)
             self.assertEqual(predict_model.call_args.args[0], train_model.call_args.args[0])
+            # Another defect class uses neither Target weights nor Target samples.
+            fresh=request('status');fresh.POST=fresh.POST.copy();fresh.POST['label']='Dryspot'
+            fresh_state=json.loads(learn(fresh).content)
+            self.assertEqual(fresh_state['round'],0)
+            self.assertEqual(fresh_state['training_pairs'],0)
+            self.assertFalse(fresh_state['trained'])
+            before_target=saved_pairs[0].read_bytes()
+            dryspot_mask=255-mask
+            fresh=request('train',image=upload(rgb),mask=upload(dryspot_mask));fresh.POST=fresh.POST.copy();fresh.POST['label']='Dryspot'
+            self.assertEqual(learn(fresh).status_code,200)
+            self.assertNotEqual(train_model.call_args.args[0],predict_model.call_args.args[0])
+            self.assertEqual(len(train_model.call_args.args[1]),1)
+            self.assertTrue(np.array_equal(train_model.call_args.args[1][0][1]>0,dryspot_mask>0))
+            self.assertEqual(saved_pairs[0].read_bytes(),before_target)
+            target_key=json.loads(learn(request('status')).content)['model_key']
+            self.assertNotEqual(fresh_state['model_key'],target_key)
+            self.assertEqual(json.loads(learn(request('status')).content)['training_pairs'],2)
+            self.assertEqual(len(json.loads(learn(request('status')).content)['samples']),2)
+            invalid=request('status');invalid.POST=invalid.POST.copy();invalid.POST['label']='Unregistered'
+            self.assertEqual(learn(invalid).status_code,400)
             tasks.return_value.get.side_effect = Task.DoesNotExist
             self.assertEqual(learn(request('status')).status_code, 404)
         req = request('status'); req.user.is_authenticated = False

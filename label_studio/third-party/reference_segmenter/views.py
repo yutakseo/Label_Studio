@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image, UnidentifiedImageError
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from .processing import MAX_PIXELS, detect, brush_result
@@ -15,6 +16,8 @@ from core.permissions import all_permissions
 from tasks.api import PredictionAPI
 from tasks.models import Task, Prediction
 from django.db import transaction
+from django.db.models import Q
+from .targets import model_key, validate_target, prediction_version, result_target
 from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
@@ -26,13 +29,14 @@ class BlackLinePredictionAPI(PredictionAPI):
 
     def get_queryset(self):
         return super().get_queryset().filter(
-            model_version__in=["Reference Segmenter", "Black line", "검은 줄", "검은줄"],
+            Q(model_version__in=["Reference Segmenter", "Black line", "검은 줄", "검은줄"])
+            | Q(model_version__startswith="Reference Segmenter · "),
             task__in=Task.objects.for_user(self.request.user),
         )
 
 
 class ReferencePredictionSaveAPI(PredictionAPI):
-    """Serialize saves on the task, preserving one stable Reference Segmenter tab."""
+    """Serialize saves on the task, preserving one stable prediction per class."""
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         try:
@@ -41,15 +45,39 @@ class ReferencePredictionSaveAPI(PredictionAPI):
             raise ValidationError({'task':'올바른 태스크를 지정하세요.'})
         task=get_object_or_404(Task.objects.for_user(request.user).select_for_update().filter(
             project__organization=request.user.active_organization),pk=task_id)
-        predictions=Prediction.objects.filter(task=task,model_version='Reference Segmenter').order_by('id')
+        result=request.data.get('result')
+        if not isinstance(result,list):
+            raise ValidationError({'result':'예측 결과 목록이 필요합니다.'})
+        supplied=[request.data.get(k) for k in ('from_name','to_name','label')]
+        targets={result_target(r) for r in result if isinstance(r,dict)}
+        if any(supplied):
+            if not all(isinstance(value,str) and value for value in supplied):
+                raise ValidationError({'label':'이미지와 브러시, 클래스를 함께 지정하세요.'})
+            target=tuple(supplied)
+        elif len(targets)==1 and None not in targets:
+            target=targets.pop()
+        else:
+            raise ValidationError({'result':'한 번에 한 클래스의 마스크만 저장하세요.'})
+        if target:
+            try: validate_target(task.project,target)
+            except ValueError as exc: raise ValidationError({'label':str(exc)})
+            if any(not isinstance(r,dict) or result_target(r)!=target for r in result):
+                raise ValidationError({'result':'선택한 클래스와 예측 마스크가 다릅니다.'})
+        version=prediction_version(target)
+        predictions=Prediction.objects.filter(task=task,model_version=version).order_by('id')
         existing=predictions.first()
-        payload={'task':task.pk,'project':task.project_id,'model_version':'Reference Segmenter'}
-        if 'result' in request.data:payload['result']=request.data['result']
-        else:raise ValidationError({'result':'예측 결과가 필요합니다.'})
+        # Adopt only legacy tabs containing this exact class. Never delete other classes.
+        legacy=[]
+        if target:
+            legacy=[p for p in Prediction.objects.filter(task=task,model_version='Reference Segmenter').order_by('id')
+                    if p.result and all(result_target(r)==target for r in p.result)]
+            if existing is None and legacy: existing=legacy[0]
+        payload={'task':task.pk,'project':task.project_id,'model_version':version,'result':result}
         serializer=self.get_serializer(instance=existing,data=payload)
         serializer.is_valid(raise_exception=True)
         saved=serializer.save()
         predictions.exclude(pk=saved.pk).delete()
+        Prediction.objects.filter(pk__in=[p.pk for p in legacy if p.pk!=saved.pk]).delete()
         return Response(serializer.data,status=200 if existing else 201)
 
 
@@ -61,6 +89,7 @@ def thumbnail(image):
     return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
 
 
+@never_cache
 def script(request):
     return HttpResponse(Path(__file__).with_name("panel.js").read_text(), content_type="application/javascript")
 
@@ -102,7 +131,6 @@ def learn(request):
     """Share model weights within an accessible project; keep annotation access personal."""
     if not request.user.is_authenticated:
         return JsonResponse({'error': '로그인이 필요합니다.'}, status=401)
-    import hashlib
     import fcntl
     import os
     from django.conf import settings
@@ -111,7 +139,8 @@ def learn(request):
     try:
         task = Task.objects.for_user(request.user).get(pk=int(request.POST['task']))
         target = [request.POST[k] for k in ('from_name', 'to_name', 'label')]
-        key = hashlib.sha256(json.dumps(target).encode()).hexdigest()
+        validate_target(task.project, target)
+        key = model_key(target)
         from .storage import model_directory
         directory = model_directory(settings.BASE_DATA_DIR, task.project_id, key)
         path = directory / (key + '.json')
@@ -130,8 +159,16 @@ def learn(request):
                                   and r.get('to_name') == target[1] and target[2] in r.get('value', {}).get('brushlabels', [])
                                   for r in (a.result or []))]
                 sample_dir=directory/(key+'.samples')
+                import re
+                samples=[]
+                for pair in sorted((sample_dir/'corrections').glob('*.npz')):
+                    match=re.fullmatch(r'user_(\d+)_task_(\d+)_(\d+)_(\d+)\.npz',pair.name)
+                    if match:
+                        user_id,task_id,x,y=map(int,match.groups())
+                        samples.append({'user_id':user_id,'task_id':task_id,'x':x,'y':y})
                 paired=len(list((sample_dir/'corrections').glob('*.npz')))
                 return JsonResponse({'round': (state or {}).get('round', 0), 'sources': sources,
+                                     'label': target[2], 'model_key': key, 'samples': samples,
                                      'model': 'U-Net', 'training_pairs': paired, 'trained': (directory/(key+'.pt')).exists()})
             if action == 'mask':
                 from mask_cleanup.processing import decode_checked

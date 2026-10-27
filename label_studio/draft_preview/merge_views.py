@@ -12,6 +12,8 @@ from django.db import transaction
 from tasks.api import AnnotationsListAPI
 from tasks.models import Task
 
+from label_studio_sdk.converter.brush import decode_rle
+
 from .mask_merge import merge_masks
 
 
@@ -44,10 +46,14 @@ def preview(request):
     try:
         data = json.loads(request.body)
         results, mask, stats = merge_masks(data["sources"], data["from_name"],
-                                           data["to_name"], data["label"])
+                                           data["to_name"], data.get("label"))
         rgba = np.zeros((*mask.shape, 4), dtype=np.uint8)
-        rgba[:, :, :3] = [255, 70, 70]
-        rgba[:, :, 3] = (mask > 0).astype(np.uint8) * 140
+        palette = [(255, 70, 70), (60, 180, 255), (80, 220, 120), (255, 190, 50),
+                   (180, 100, 255), (255, 110, 190)]
+        for index, result in enumerate(results):
+            pixels = decode_rle(result["value"]["rle"]).reshape(*mask.shape, 4)[:, :, 3] > 0
+            rgba[pixels, :3] = palette[index % len(palette)]
+            rgba[pixels, 3] = 140
         image = Image.fromarray(rgba)
         image.thumbnail((1400, 1000))
         buffer = io.BytesIO()

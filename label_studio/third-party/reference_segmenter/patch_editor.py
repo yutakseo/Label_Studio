@@ -9,9 +9,12 @@ END = '/* DARK_LINE_TOOL_END */'
 def patch(source):
     source = source.replace("Delete Black line", "Delete Reference Segmenter").replace(
         '["Black line","검은 줄","검은줄"]', '["Reference Segmenter","Black line","검은 줄","검은줄"]')
+    source = source.replace(
+        'T&&["Reference Segmenter","Black line","검은 줄","검은줄"].includes(e.createdBy)',
+        'T&&(["Reference Segmenter","Black line","검은 줄","검은줄"].includes(e.createdBy)||e.createdBy?.startsWith("Reference Segmenter · "))')
     menu = ('{label:"Delete Reference Segmenter",onClick:()=>{if(window.DarkLine)window.DarkLine.deletePrediction(e.pk);'
             'else window.alert("새로고침 후 다시 실행하세요.")},icon:(0,se.jsx)(wn.Wus,{}),'
-            'separator:!0,danger:!0,enabled:T&&["Reference Segmenter","Black line","검은 줄","검은줄"].includes(e.createdBy)},')
+            'separator:!0,danger:!0,enabled:T&&(["Reference Segmenter","Black line","검은 줄","검은줄"].includes(e.createdBy)||e.createdBy?.startsWith("Reference Segmenter · "))},')
     anchor = '{label:"Delete Annotation",onClick:j,'
     if menu not in source:
         if source.count(anchor) != 1:

@@ -31,6 +31,16 @@ class MergeHttpTests(unittest.TestCase):
         self.assertTrue(data["preview"].startswith("data:image/png;base64,"))
         self.assertEqual(resolve("/mask-merge/preview").func, preview)
 
+    def test_multilabel_preview(self):
+        other = region([[1, 1]])
+        other["value"]["brushlabels"] = ["Other"]
+        response = preview(self.request(data={"sources": [[region([[1, 0]])], [other]],
+                                              "from_name": "brush", "to_name": "image", "label": None}))
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual([r["value"]["brushlabels"] for r in data["results"]], [["Exposure"], ["Other"]])
+        self.assertTrue(data["preview"].startswith("data:image/png;base64,"))
+
     def test_auth_csrf_and_invalid_input(self):
         self.assertEqual(preview(self.request(authenticated=False)).status_code, 401)
         self.assertEqual(preview(self.request(csrf_bypass=False)).status_code, 403)

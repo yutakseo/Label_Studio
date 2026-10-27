@@ -29,6 +29,22 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(sources, original)
         self.assertNotEqual(results[0]["id"], "original")
 
+    def test_preserve_labels_and_overlap(self):
+        other = region([[1, 1], [0, 0]])
+        other["value"]["brushlabels"] = ["Other"]
+        sources = [[region([[1, 0], [0, 0]])],
+                   [other, region([[0, 0], [1, 0]])]]
+        original = copy.deepcopy(sources)
+        results, mask, stats = merge_masks(sources, "brush", "image")
+        by_label = {r["value"]["brushlabels"][0]: decode_rle(r["value"]["rle"]).reshape(2, 2, 4)[:, :, 3]
+                    for r in results}
+        np.testing.assert_array_equal(by_label["Exposure"], [[255, 0], [255, 0]])
+        np.testing.assert_array_equal(by_label["Other"], [[255, 255], [0, 0]])
+        np.testing.assert_array_equal(mask, [[255, 255], [255, 0]])
+        self.assertEqual(stats["pixels"], 3)
+        self.assertEqual(sources, original)
+        self.assertEqual(len({r["id"] for r in results}), 2)
+
     def test_unrelated_targets_and_non_brush_regions_are_excluded(self):
         sources = [[region([[1, 0]]), region([[0, 1]], to_name="other"), {"type": "rectanglelabels"}],
                    [region([[1, 0]])]]

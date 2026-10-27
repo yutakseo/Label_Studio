@@ -1,4 +1,4 @@
-"""Run against the configured DB inside a transaction that is always rolled back."""
+"""DB checks always roll back; predictions are isolated by brush/image/class."""
 import os
 import unittest
 os.environ.setdefault('DJANGO_SETTINGS_MODULE','core.settings.label_studio')
@@ -8,45 +8,53 @@ from django.db import transaction
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIRequestFactory,force_authenticate
 from tasks.models import Task,Prediction
+from projects.models import Project
 from .views import ReferencePredictionSaveAPI
+from .targets import prediction_version
 
 
 class PredictionSaveTests(unittest.TestCase):
-    def test_create_retry_update_deduplication_and_invalid_requests(self):
+    def test_class_save_retry_legacy_adoption_and_access(self):
+        import numpy as np
+        from .processing import brush_result
         user=get_user_model().objects.get(pk=1)
-        project_task=Task.objects.for_user(user).filter(project__organization=user.active_organization).first()
-        self.assertIsNotNone(project_task)
         factory=APIRequestFactory()
         view=ReferencePredictionSaveAPI.as_view({'post':'create'})
         with transaction.atomic():
             try:
-                task=Task.objects.create(project_id=project_task.project_id,data=project_task.data)
-                other=Prediction.objects.create(task=task,project_id=task.project_id,model_version='Other model',result=[])
+                project=Project.objects.create(title='Reference class regression',organization=user.active_organization,
+                    created_by=user,label_config='<View><Image name="image" value="$image"/><BrushLabels name="brush" toName="image"><Label value="Exposure"/><Label value="Dryspot"/></BrushLabels></View>')
+                task=Task.objects.create(project=project,data={'image':'/test.png'})
+                pixels=np.zeros((64,64),np.uint8);pixels[4:8,10:15]=255
+                exposure=brush_result(pixels,'brush','image','Exposure')
+                dryspot=brush_result(pixels,'brush','image','Dryspot')
+                legacy=Prediction.objects.create(task=task,project=project,model_version='Reference Segmenter',result=exposure)
+                mixed=Prediction.objects.create(task=task,project=project,model_version='Reference Segmenter',result=exposure+dryspot)
+                other=Prediction.objects.create(task=task,project=project,model_version='Other model',result=[])
                 def save(data,authenticated=True):
-                    req=factory.post('/reference-segmenter/predictions/save',data,format='json')
+                    req=factory.post('/reference-segmenter/predictions/save',{'task':task.pk,**data},format='json')
                     if authenticated:force_authenticate(req,user=user)
                     return view(req)
-                payload={'task':task.pk,'result':[]}
-                first=save(payload)
-                self.assertEqual(first.status_code,201,first.data)
-                ident=first.data['id']
-                retry=save(payload)
-                self.assertEqual(retry.status_code,200,retry.data)
-                self.assertEqual(retry.data['id'],ident)
-                duplicate=Prediction.objects.create(task=task,project_id=task.project_id,model_version='Reference Segmenter',result=[])
-                import numpy as np
-                from .processing import brush_result
-                updated_mask=np.zeros((64,64),np.uint8);updated_mask[5:10,8:15]=255
-                payload['result']=brush_result(updated_mask,'brush','image','Exposure')
-                updated=save(payload)
-                self.assertEqual(updated.status_code,200)
-                self.assertEqual(updated.data['id'],ident)
-                self.assertEqual(Prediction.objects.get(pk=ident).result,payload['result'])
+                first=save({'result':exposure})
+                self.assertEqual(first.status_code,200,first.data)
+                self.assertEqual(first.data['id'],legacy.pk)
+                duplicate=Prediction.objects.create(task=task,project=project,model_version=prediction_version(('brush','image','Exposure')),result=exposure)
+                retry=save({'result':exposure})
+                self.assertEqual(retry.data['id'],legacy.pk)
                 self.assertFalse(Prediction.objects.filter(pk=duplicate.pk).exists())
-                self.assertEqual(Prediction.objects.filter(task=task,model_version='Reference Segmenter').count(),1)
+                second=save({'result':dryspot,'from_name':'brush','to_name':'image','label':'Dryspot'})
+                self.assertEqual(second.status_code,201,second.data)
+                self.assertNotEqual(second.data['id'],legacy.pk)
+                self.assertEqual(Prediction.objects.get(pk=legacy.pk).result,exposure)
                 self.assertTrue(Prediction.objects.filter(pk=other.pk).exists())
-                self.assertEqual(save({'task':task.pk}).status_code,400)
-                self.assertEqual(save({'task':'invalid','result':[]}).status_code,400)
-                self.assertIn(save(payload,False).status_code,(401,403))
-            finally:
-                transaction.set_rollback(True)
+                self.assertEqual(Prediction.objects.get(pk=mixed.pk).result,exposure+dryspot)
+                self.assertEqual(save({'result':[]}).status_code,400)
+                self.assertEqual(save({'result':exposure+dryspot}).status_code,400)
+                self.assertEqual(save({'result':exposure,'from_name':'brush','to_name':'image','label':'Dryspot'}).status_code,400)
+                self.assertEqual(save({'result':[],'from_name':'brush','to_name':'image','label':'Unregistered'}).status_code,400)
+                empty=save({'result':[],'from_name':'brush','to_name':'image','label':'Dryspot'})
+                self.assertEqual(empty.data['id'],second.data['id'])
+                self.assertEqual(Prediction.objects.get(pk=legacy.pk).result,exposure)
+                self.assertEqual(save({}).status_code,400)
+                self.assertIn(save({'result':exposure},False).status_code,(401,403))
+            finally:transaction.set_rollback(True)
